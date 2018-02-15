@@ -1,36 +1,5 @@
 module Spree
   Shipment.class_eval do
-    # Overriden from spree core
-    #
-    #   def set_up_inventory(state, variant, order)
-    #     self.inventory_units.create(variant_id: variant.id, state: state, order_id: order.id)
-    #   end
-    #
-    # Also assigns a line item to the inventory unit
-    def set_up_inventory(state, variant, order, line_item)
-      self.inventory_units.create(
-        state: state,
-        variant_id: variant.id,
-        order_id: order.id,
-        line_item_id: line_item.id
-      )
-    end
-
-    # Overriden from spree core
-    #
-    # As line items associated with a product assembly dont have their
-    # inventory units variant id equals to the line item variant id.
-    # That's because we create inventory units for the parts, which are
-    # actually other variants, rather than for the variant directly
-    # associated with the line item (the product assembly)
-    def line_items
-      if order.complete? and Spree::Config[:track_inventory_levels]
-        order.line_items.select { |li| inventory_units.pluck(:line_item_id).include?(li.id) }
-      else
-        order.line_items
-      end
-    end
-
     # Overriden from Spree core as a product bundle part should not be put
     # together with an individual product purchased (even though they're the
     # very same variant) That is so we can tell the store admin which units
@@ -38,25 +7,35 @@ module Spree
     #
     # Account for situations where we can't track the line_item for a variant.
     # This should avoid exceptions when users upgrade from spree 1.3
+    #
+    # TODO Can possibly be removed as well. We already override the manifest
+    # partial so we can get the product there
+    ManifestItem = Struct.new(:part, :product, :line_item, :variant, :quantity, :states)
+
     def manifest
-      items = []
-      inventory_units.joins(:variant).includes(:variant, :line_item).group_by(&:variant).each do |variant, units|
+      inventory_units.group_by(&:variant_id).map do |variant, inventory_units|
+        inventory_units.group_by(&:line_item_id).map do |line_item, units|
 
-        units.group_by(&:line_item).each do |line_item, units|
-          states = {}
-          units.group_by(&:state).each { |state, iu| states[state] = iu.count }
-          line_item ||= order.find_line_item_by_variant(variant)
+          line_item = units.first.line_item
+          variant = units.first.variant
 
-          part = line_item ? line_item.product.assembly? : false
-          items << OpenStruct.new(part: part,
-                                  product: line_item.try(:product),
-                                  line_item: line_item,
-                                  variant: variant,
-                                  quantity: units.length,
-                                  states: states)
+          if Gem.loaded_specs['spree_core'].version >= Gem::Version.create('3.3.0')
+            states = units.group_by(&:state).each_with_object({}) { |(state, iu), acc| acc[state] = iu.sum(&:quantity) }
+            quantity = units.sum(&:quantity)
+          else
+            states = units.group_by(&:state).each_with_object({}) { |(state, iu), acc| acc[state] = iu.count }
+            quantity = units.length
+          end
+
+          part = line_item.try(:product).try(:assembly?) || false
+          ManifestItem.new(part,
+                           line_item.try(:product),
+                           line_item,
+                           variant,
+                           quantity,
+                           states)
         end
-      end
-      items
+      end.flatten
     end
 
     # There might be scenarios where we don't want to display every single

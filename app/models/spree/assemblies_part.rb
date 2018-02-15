@@ -1,18 +1,33 @@
 module Spree
   class AssembliesPart < ActiveRecord::Base
-    belongs_to :assembly, :class_name => "Spree::Product", :foreign_key => "assembly_id"
-    belongs_to :part, :class_name => "Spree::Variant", :foreign_key => "part_id"
+    belongs_to :assembly, class_name: "Spree::Variant",
+                          foreign_key: "assembly_id",
+                          touch: true
+
+    belongs_to :part, class_name: "Spree::Variant", foreign_key: "part_id"
+
+    delegate :name, :sku, to: :part
+
+    after_create :set_master_unlimited_stock
 
     def self.get(assembly_id, part_id)
-      find_by_assembly_id_and_part_id(assembly_id, part_id)
+      find_or_initialize_by(assembly_id: assembly_id, part_id: part_id)
     end
 
-    def save
-      self.class.where(["assembly_id = ? AND part_id = ?", assembly_id, part_id]).update_all count: count
+    def options_text
+      if variant_selection_deferred?
+        Spree.t(:user_selectable)
+      else
+        part.options_text
+      end
     end
 
-    def destroy
-      self.class.delete_all(["assembly_id = ? AND part_id = ?", assembly_id, part_id])
+    private
+
+    def set_master_unlimited_stock
+      if part.product.variants.any?
+        part.product.master.update_attribute :track_inventory, false
+      end
     end
   end
 end

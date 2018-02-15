@@ -1,30 +1,31 @@
-<table class="index">
+<table class="table">
   <thead>
   	<tr>
   	  <th><%= Spree.t(:sku) %></th>
   		<th><%= Spree.t(:name) %></th>
-  		<th><%= Spree.t(:options) %></th>
+      <th><%= Spree.t(:options) %></th>
+      <th><%= Spree.t(:variant) %></th>
   		<th><%= Spree.t(:qty) %></th>
-  		<th></th>
   	</tr>
   </thead>
   <tbody>
     <% parts.each do |part| %>
       <tr id="<%= dom_id(part, :sel)%>">
         <td><%= part.sku %></td>
-        <td><%= part.product.name %></td>
+        <td><%= part.name %></td>
         <td><%= variant_options part %></td>
-        <td><%= text_field_tag :count, @product.count_of(part) %></td>
+        <td><%= variant_including_master_options part.assembly %></td>
+        <td><%= text_field_tag :count, part.count, class: "form-control" %></td>
   	    <td class="actions">
           <%= image_tag "spinner.gif", :style => "display:none", :class => "spinner" %>
-          <%= link_to(icon('edit') + ' ' + Spree.t(:update),
-                      set_count_admin_product_part_url(@product, part),
-                      :class => "set_count_admin_product_part_link") %>
+          <%= link_to_with_icon("edit", Spree.t("edit"),
+                      set_count_admin_product_part_url(product, part),
+                      :class => "set_count_admin_product_part_link btn btn-primary btn-sm", :no_text => true) %>
 
-          <%= link_to(icon('delete') + ' ' + Spree.t(:remove), 
-                      remove_admin_product_part_url(@product, part),
-                      :class => "remove_admin_product_part_link") %>             
-  	    </td>        
+          <%= link_to_with_icon("delete", Spree.t("delete"),
+                      remove_admin_product_part_url(product, part),
+                      :class => "remove_admin_product_part_link btn btn-danger btn-sm delete-resource", :no_text => true) %>
+  	    </td>
       </tr>
     <% end %>
     <% if parts.empty? %>
@@ -32,4 +33,3 @@
     <% end %>
   </tbody>
 </table>
-<%= javascript_tag("subscribe_product_part_links();") if request.xhr? %>

@@ -1,17 +1,15 @@
-require 'spec_helper'
-
 module Spree
-  describe LineItem do
+  describe LineItem, type: :model do
     let!(:order) { create(:order_with_line_items) }
     let(:line_item) { order.line_items.first }
     let(:product) { line_item.product }
     let(:variant) { line_item.variant }
-    let(:inventory) { double('inventory') }
+    let(:inventory) { double('order_inventory') }
 
     context "bundle parts stock" do
       let(:parts) { (1..2).map { create(:variant) } }
 
-      before { product.parts << parts }
+      before { product.master.parts << parts }
 
       context "one of them not in stock" do
         before do
@@ -22,13 +20,17 @@ module Spree
         end
 
         it "doesn't save line item quantity" do
-          line_item = order.contents.add(variant, 10)
-          expect(line_item).not_to be_valid
+          expect { order.contents.add(variant, 10) }.to(
+            raise_error ActiveRecord::RecordInvalid
+          )
         end
       end
 
       context "in stock" do
         before do
+          parts.each do |part|
+            part.stock_items.first.set_count_on_hand(10)
+          end
           expect(parts[0]).to be_in_stock
           expect(parts[1]).to be_in_stock
         end
@@ -44,29 +46,40 @@ module Spree
       let(:parts) { (1..2).map { create(:variant) } }
 
       before do
-        product.parts << parts
+        product.master.parts << parts
         order.create_proposed_shipments
         order.finalize!
       end
 
-      it "verifies inventory units via OrderIventoryAssembly" do
-        OrderInventoryAssembly.should_receive(:new).with(line_item).and_return(inventory)
-        inventory.should_receive(:verify).with(line_item.target_shipment)
+      it "verifies inventory units via OrderInventoryAssembly" do
+        expect(OrderInventoryAssembly).to receive(:new).
+          with(line_item).
+          and_return(inventory)
+        expect(inventory).to receive(:verify).with(line_item.target_shipment)
+        line_item.quantity = 2
         line_item.save
-      end
-
-      it "destroys units along with line item" do
-        expect(OrderInventoryAssembly.new(line_item).inventory_units).not_to be_empty
-        line_item.destroy_along_with_units
-        expect(InventoryUnit.where(line_item_id: line_item.id).to_a).to be_empty
       end
     end
 
     context "updates regular line item" do
       it "verifies inventory units via OrderInventory" do
-        OrderInventory.should_receive(:new).with(line_item.order).and_return(inventory)
-        inventory.should_receive(:verify).with(line_item, line_item.target_shipment)
+        expect(OrderInventory).to receive(:new).
+          with(line_item.order, line_item).
+          and_return(inventory)
+        expect(inventory).to receive(:verify).with(line_item.target_shipment)
+        line_item.quantity = 2
         line_item.save
+      end
+    end
+
+    context "removing line items" do
+      it "removes part line items" do
+        line_item = create(:line_item)
+        create(:part_line_item, line_item: line_item)
+
+        line_item.destroy
+
+        expect(Spree::PartLineItem.count).to eq 0
       end
     end
   end

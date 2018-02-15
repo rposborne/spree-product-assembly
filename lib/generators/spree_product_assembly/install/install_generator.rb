@@ -8,7 +8,8 @@ module SpreeProductAssembly
       end
 
       def add_javascripts
-        append_file "app/assets/javascripts/admin/all.js", "//= require admin/spree_product_assembly\n"
+        append_file "vendor/assets/javascripts/spree/backend/all.js", "//= require spree/backend/spree_product_assembly\n"
+        append_file "vendor/assets/javascripts/spree/frontend/all.js", "//= require spree/frontend/spree_product_assembly\n"
       end
 
       def run_migrations

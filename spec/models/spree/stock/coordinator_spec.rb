@@ -1,12 +1,20 @@
-require 'spec_helper'
-
 module Spree
   module Stock
-    describe Coordinator do
+    describe Coordinator, type: :model do
       subject { Coordinator.new(order) }
 
       context "order shares variant as individual and within bundle" do
-        include_context "product is ordered as individual and within a bundle"
+        let(:order) { create(:order_with_line_items) }
+        let(:parts) { (1..3).map { create(:variant) } }
+
+        let(:bundle_variant) { order.variants.first }
+        let(:bundle) { bundle_variant.product }
+
+        let(:common_product) { order.variants.last }
+
+        before do
+          bundle.master.parts << [parts, common_product]
+        end
 
         before { StockItem.update_all 'count_on_hand = 10' }
 
@@ -18,7 +26,7 @@ module Spree
           it "calculates items quantity properly" do
             expected_units_on_package = order.line_items.to_a.sum(&:quantity) - bundle_item_quantity + (bundle.parts.count * bundle_item_quantity)
 
-            expect(subject.packages.sum(&:quantity)).to eql expected_units_on_package
+            expect(subject.packages.sum(&:quantity)).to eq expected_units_on_package
           end
         end
       end
@@ -34,11 +42,11 @@ module Spree
 
         let(:bundle_item_quantity) { order.find_line_item_by_variant(bundle_variant).quantity }
 
-        before { bundle.parts << parts }
+        before { bundle.master.parts << parts }
 
-        it "haha" do
+        specify do
           expected_units_on_package = order.line_items.to_a.sum(&:quantity) - bundle_item_quantity + (bundle.parts.count * bundle_item_quantity)
-          expect(subject.packages.sum(&:quantity)).to eql expected_units_on_package
+          expect(subject.packages.sum(&:quantity)).to eq expected_units_on_package
         end
       end
     end
